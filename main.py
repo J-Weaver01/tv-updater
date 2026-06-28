@@ -37,24 +37,29 @@ def update():
             page = context.new_page()
 
             # ── LOGIN ──────────────────────────────────────────
-            print("[update] Navigating to login...", flush=True)
+            print("[update] Navigating to TradingView login...", flush=True)
             page.goto("https://www.tradingview.com/accounts/signin/")
             page.wait_for_load_state("networkidle")
-            time.sleep(2)
+            time.sleep(3)
 
-            # TradingView shows social buttons first — click Email tab
+            # Click Email button to reveal login form
             try:
-                page.click('button[data-name="email"]', timeout=8000)
-                time.sleep(1)
+                page.click('button[data-name="email"]', timeout=10000)
+                time.sleep(2)
             except Exception:
-                pass  # Email form may already be visible
+                pass
 
-            page.wait_for_selector('input[name="username"]', timeout=10000)
+            # Try both possible username selectors
+            try:
+                page.wait_for_selector('input[name="username"]', timeout=15000)
+            except Exception:
+                page.wait_for_selector('input[type="email"]', timeout=15000)
+
             page.fill('input[name="username"]', TV_EMAIL)
             page.fill('input[name="password"]', TV_PASSWORD)
             page.click('button[type="submit"]')
             page.wait_for_load_state("networkidle")
-            time.sleep(4)
+            time.sleep(5)
             print("[update] Logged in.", flush=True)
 
             # ── OPEN CHART ─────────────────────────────────────
@@ -65,7 +70,6 @@ def update():
             print("[update] Chart loaded.", flush=True)
 
             # ── OPEN INDICATOR SETTINGS ────────────────────────
-            # Double-click the indicator title in the legend to open settings
             legend = page.locator('div[data-name="legend-source-title"]').first
             legend.dblclick()
             page.wait_for_selector(
@@ -76,16 +80,11 @@ def update():
             print("[update] Settings dialog open.", flush=True)
 
             # ── FILL THE 6 TICKER FIELDS ───────────────────────
-            # The ⚡ Auto Tickers group shows 6 plain text inputs.
-            # They appear in order: Pick1 Rank1, Pick2 Rank1, ... Pick2 Rank3
             inputs = page.query_selector_all(
                 'div[data-name="indicator-properties-dialog"] input[type="text"]'
             )
             print(f"[update] Found {len(inputs)} text inputs.", flush=True)
 
-            # The first 2 inputs are Table Position and Text Size (dropdowns,
-            # not text inputs), so our 6 ticker fields start at index 0
-            # of the plain text inputs list.
             for i, ticker in enumerate(tickers):
                 if i < len(inputs):
                     inputs[i].triple_click()
