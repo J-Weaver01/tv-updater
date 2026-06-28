@@ -26,14 +26,29 @@ def update():
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=True,
-                args=["--no-sandbox", "--disable-setuid-sandbox",
-                      "--disable-dev-shm-usage"]
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-blink-features=AutomationControlled"
+                ]
             )
             context = browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                           "Chrome/120.0.0.0 Safari/537.36"
+                           "Chrome/120.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 800},
+                java_script_enabled=True,
+                locale="en-US"
             )
+
+            # Hide webdriver flag
+            context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+            """)
+
             page = context.new_page()
 
             # ── LOGIN ──────────────────────────────────────────
@@ -45,87 +60,30 @@ def update():
             print(f"[debug] Page URL: {page.url}", flush=True)
             print(f"[debug] Page title: {page.title()}", flush=True)
 
-            # Dismiss cookie consent if present
-            try:
-                page.click('button[id="onetrust-accept-btn-handler"]', timeout=3000)
-                time.sleep(1)
-                print("[update] Dismissed cookie banner.", flush=True)
-            except Exception:
-                pass
-
-            # Click Email button
-            try:
-                page.click('button[data-name="email"]', timeout=8000)
-                time.sleep(2)
-                print("[update] Clicked email button.", flush=True)
-            except Exception as e:
-                print(f"[update] Email button not found: {e}", flush=True)
-
-            # Try every possible selector for the username field
-            username_selector = None
-            for selector in [
-                'input[name="username"]',
-                'input[type="email"]',
-                'input[autocomplete="username"]',
-                'input[id="id_username"]',
-                'input[type="text"]'
-            ]:
+            # Log all buttons to find the right selector
+            buttons = page.query_selector_all("button")
+            print(f"[debug] Found {len(buttons)} buttons", flush=True)
+            for i, btn in enumerate(buttons[:15]):
                 try:
-                    page.wait_for_selector(selector, timeout=5000)
-                    username_selector = selector
-                    print(f"[update] Found username field: {selector}", flush=True)
-                    break
+                    text      = btn.inner_text().strip().replace("\n", " ")
+                    data_name = btn.get_attribute("data-name") or ""
+                    class_    = btn.get_attribute("class") or ""
+                    print(f"[debug] Button {i}: text='{text}' data-name='{data_name}' class='{class_[:60]}'", flush=True)
                 except Exception:
-                    print(f"[update] Not found: {selector}", flush=True)
+                    pass
 
-            if not username_selector:
-                raise Exception("Could not find username input — check Railway logs")
+            # Log all inputs
+            inputs = page.query_selector_all("input")
+            print(f"[debug] Found {len(inputs)} inputs", flush=True)
+            for i, inp in enumerate(inputs[:10]):
+                try:
+                    itype = inp.get_attribute("type") or ""
+                    iname = inp.get_attribute("name") or ""
+                    print(f"[debug] Input {i}: type='{itype}' name='{iname}'", flush=True)
+                except Exception:
+                    pass
 
-            page.fill(username_selector, TV_EMAIL)
-            page.fill('input[name="password"]', TV_PASSWORD)
-            page.click('button[type="submit"]')
-            page.wait_for_load_state("networkidle")
-            time.sleep(5)
-            print("[update] Logged in.", flush=True)
-
-            # ── OPEN CHART ─────────────────────────────────────
-            print(f"[update] Loading chart: {CHART_URL}", flush=True)
-            page.goto(CHART_URL)
-            page.wait_for_load_state("networkidle")
-            time.sleep(6)
-            print("[update] Chart loaded.", flush=True)
-
-            # ── OPEN INDICATOR SETTINGS ────────────────────────
-            legend = page.locator('div[data-name="legend-source-title"]').first
-            legend.dblclick()
-            page.wait_for_selector(
-                'div[data-name="indicator-properties-dialog"]',
-                timeout=12000
-            )
-            time.sleep(1)
-            print("[update] Settings dialog open.", flush=True)
-
-            # ── FILL THE 6 TICKER FIELDS ───────────────────────
-            inputs = page.query_selector_all(
-                'div[data-name="indicator-properties-dialog"] input[type="text"]'
-            )
-            print(f"[update] Found {len(inputs)} text inputs.", flush=True)
-
-            for i, ticker in enumerate(tickers):
-                if i < len(inputs):
-                    inputs[i].triple_click()
-                    inputs[i].fill(ticker)
-                    time.sleep(0.3)
-                    print(f"[update] Set slot {i+1} = {ticker}", flush=True)
-
-            # ── SAVE ───────────────────────────────────────────
-            page.click('button[name="submit"]')
-            time.sleep(2)
-            print("[update] Saved. Done.", flush=True)
-
-            browser.close()
-
-        return jsonify({"status": "success", "tickers": tickers}), 200
+            raise Exception("Diagnostic run complete — check Railway logs for button and input details")
 
     except Exception as e:
         print(f"[update] ERROR: {e}", flush=True)
