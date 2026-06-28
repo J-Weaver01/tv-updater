@@ -40,22 +40,48 @@ def update():
             print("[update] Navigating to TradingView login...", flush=True)
             page.goto("https://www.tradingview.com/accounts/signin/")
             page.wait_for_load_state("networkidle")
-            time.sleep(3)
+            time.sleep(5)
 
-            # Click Email button to reveal login form
+            print(f"[debug] Page URL: {page.url}", flush=True)
+            print(f"[debug] Page title: {page.title()}", flush=True)
+
+            # Dismiss cookie consent if present
             try:
-                page.click('button[data-name="email"]', timeout=10000)
-                time.sleep(2)
+                page.click('button[id="onetrust-accept-btn-handler"]', timeout=3000)
+                time.sleep(1)
+                print("[update] Dismissed cookie banner.", flush=True)
             except Exception:
                 pass
 
-            # Try both possible username selectors
+            # Click Email button
             try:
-                page.wait_for_selector('input[name="username"]', timeout=15000)
-            except Exception:
-                page.wait_for_selector('input[type="email"]', timeout=15000)
+                page.click('button[data-name="email"]', timeout=8000)
+                time.sleep(2)
+                print("[update] Clicked email button.", flush=True)
+            except Exception as e:
+                print(f"[update] Email button not found: {e}", flush=True)
 
-            page.fill('input[name="username"]', TV_EMAIL)
+            # Try every possible selector for the username field
+            username_selector = None
+            for selector in [
+                'input[name="username"]',
+                'input[type="email"]',
+                'input[autocomplete="username"]',
+                'input[id="id_username"]',
+                'input[type="text"]'
+            ]:
+                try:
+                    page.wait_for_selector(selector, timeout=5000)
+                    username_selector = selector
+                    print(f"[update] Found username field: {selector}", flush=True)
+                    break
+                except Exception:
+                    print(f"[update] Not found: {selector}", flush=True)
+
+            if not username_selector:
+                raise Exception("Could not find username input — check Railway logs")
+
+            page.fill(username_selector, TV_EMAIL)
             page.fill('input[name="password"]', TV_PASSWORD)
             page.click('button[type="submit"]')
             page.wait_for_load_state("networkidle")
