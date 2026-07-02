@@ -51,12 +51,10 @@ def update():
             page.wait_for_load_state("networkidle")
             time.sleep(3)
 
-            # Click Email button
             page.click('button:has-text("Email")', timeout=10000)
             time.sleep(2)
             print("[update] Clicked Email button.", flush=True)
 
-            # Fill login form
             page.wait_for_selector('input[name="id_username"]', timeout=15000)
             page.fill('input[name="id_username"]', TV_EMAIL)
             page.fill('input[name="id_password"]', TV_PASSWORD)
@@ -82,6 +80,21 @@ def update():
             time.sleep(1)
             print("[update] Settings dialog open.", flush=True)
 
+            # ── LOG ALL BUTTONS IN DIALOG ──────────────────────
+            dialog_buttons = page.query_selector_all(
+                'div[data-name="indicator-properties-dialog"] button'
+            )
+            print(f"[debug] Found {len(dialog_buttons)} buttons in dialog", flush=True)
+            for i, btn in enumerate(dialog_buttons):
+                try:
+                    txt  = btn.inner_text().strip().replace("\n", " ")
+                    name = btn.get_attribute("name") or ""
+                    dname = btn.get_attribute("data-name") or ""
+                    cls  = (btn.get_attribute("class") or "")[:60]
+                    print(f"[debug] Button {i}: text='{txt}' name='{name}' data-name='{dname}' class='{cls}'", flush=True)
+                except Exception:
+                    pass
+
             # ── FILL THE 6 TICKER FIELDS ───────────────────────
             inputs = page.query_selector_all(
                 'div[data-name="indicator-properties-dialog"] input[type="text"]'
@@ -95,11 +108,29 @@ def update():
                     time.sleep(0.3)
                     print(f"[update] Set slot {i+1} = {ticker}", flush=True)
 
-            # ── SAVE ───────────────────────────────────────────
-            page.click('button[name="submit"]')
-            time.sleep(2)
-            print("[update] Saved. Done.", flush=True)
+            # ── SAVE — try every possible selector ────────────
+            saved = False
+            for selector in [
+                'button[data-name="submit"]',
+                'button[name="submit"]',
+                'div[data-name="indicator-properties-dialog"] button:has-text("Ok")',
+                'div[data-name="indicator-properties-dialog"] button:has-text("OK")',
+                'div[data-name="indicator-properties-dialog"] button:has-text("Apply")',
+                'div[data-name="indicator-properties-dialog"] button:last-child'
+            ]:
+                try:
+                    page.click(selector, timeout=5000)
+                    saved = True
+                    print(f"[update] Saved using: {selector}", flush=True)
+                    break
+                except Exception:
+                    print(f"[update] Not found: {selector}", flush=True)
 
+            if not saved:
+                raise Exception("Could not find save button — check Railway logs for button list")
+
+            time.sleep(2)
+            print("[update] Done.", flush=True)
             browser.close()
 
         return jsonify({"status": "success", "tickers": tickers}), 200
